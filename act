@@ -1,0 +1,117 @@
+#!/bin/bash
+
+# NE PAS METTRE LE TOKEN DANS LE SCRIPT !
+# Nous allons le demander lors de l'exécution
+
+echo "🔐 CRÉATION SÉCURISÉE DE DÉPÔT GITHUB"
+echo "======================================"
+
+# Demander le token (ne sera pas affiché)
+read -sp "🔑 Token GitHub (ne sera pas affiché): " TOKEN
+echo ""
+
+# Demander le nom du dépôt
+read -p "📝 Nom du nouveau dépôt: " REPO_NAME
+read -p "📋 Description (optionnel): " DESCRIPTION
+
+GITHUB_USER="Juana-archer"
+
+echo ""
+echo "📦 Création du dépôt '$REPO_NAME'..."
+
+# 1. Créer le dépôt sur GitHub
+RESPONSE=$(curl -s -w "%{http_code}" -X POST \
+  -H "Authorization: token $TOKEN" \
+  -H "Accept: application/vnd.github.v3+json" \
+  https://api.github.com/user/repos \
+  -d "{\"name\":\"$REPO_NAME\",\"private\":false,\"description\":\"$DESCRIPTION\"}")
+
+HTTP_CODE=${RESPONSE: -3}
+RESPONSE_BODY=${RESPONSE:0:-3}
+
+if [ "$HTTP_CODE" = "201" ]; then
+    echo "✅ Dépôt créé sur GitHub!"
+else
+    echo "❌ Erreur lors de la création"
+    echo "Code: $HTTP_CODE"
+    echo "$RESPONSE_BODY" | grep -o '"message":"[^"]*"' | head -1
+    exit 1
+fi
+
+# 2. Créer le dossier local
+cd ~
+if [ -d "$REPO_NAME" ]; then
+    echo "⚠️  Le dossier existe déjà, écrasement..."
+    rm -rf "$REPO_NAME"
+fi
+
+mkdir "$REPO_NAME"
+cd "$REPO_NAME"
+
+# 3. Initialiser Git
+git init
+git config user.name "$GITHUB_USER"
+git config user.email "$GITHUB_USER@users.noreply.github.com"
+
+# 4. Copier TOUS les fichiers depuis ~/maj
+echo "📁 Copie des fichiers depuis ~/jessi..."
+cp -r ~/jessi/* .
+
+# 5. Vérifier les fichiers copiés
+echo ""
+echo "📋 Fichiers copiés:"
+ls -1
+
+# 6. Créer un README.md
+cat > README.md << README
+# $REPO_NAME
+
+$DESCRIPTION
+
+## Fichiers transférés depuis ~/jessi
+
+$(for file in $(ls ~/jessi/); do echo "- \`$file\`"; done)
+
+## Date de transfert
+$(date)
+
+Créé depuis Termux sur Android.
+README
+
+# 7. Ajouter le remote GitHub
+git remote add origin "https://${TOKEN}@github.com/${GITHUB_USER}/${REPO_NAME}.git"
+
+# 8. Premier commit
+git add .
+COMMIT_MSG="Initial commit: Transfert des fichiers depuis ~/jessi
+
+Fichiers inclus:"
+for file in $(ls ~/jessi/); do
+    COMMIT_MSG="$COMMIT_MSG
+- $file"
+done
+git commit -m "$COMMIT_MSG"
+
+# 9. Pousser vers GitHub
+echo ""
+echo "⬆️  Envoi vers GitHub..."
+git branch -M main
+if git push -u origin main; then
+    echo "✅ Push réussi!"
+else
+    echo "❌ Erreur lors du push"
+    exit 1
+fi
+
+# 10. Nettoyer le token de la mémoire
+TOKEN=""
+unset TOKEN
+
+echo ""
+echo "🎉 DÉPÔT CRÉÉ AVEC SUCCÈS !"
+echo "============================"
+echo "🔗 URL: https://github.com/$GITHUB_USER/$REPO_NAME"
+echo "📁 Dossier local: ~/$REPO_NAME"
+echo ""
+echo "⚠️  IMPORTANT: Votre token a été utilisé mais pas sauvegardé."
+echo "   Vous pouvez continuer en utilisant HTTPS avec mot de passe/token."
